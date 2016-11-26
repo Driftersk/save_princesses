@@ -1,6 +1,6 @@
 import unittest
 
-from main import save_princess, get_trace_distance, Node
+from main import save_princess, Node
 
 
 class SavePrincessesTests(unittest.TestCase):
