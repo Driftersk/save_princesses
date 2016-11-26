@@ -43,6 +43,23 @@ class Tests(unittest.TestCase):
 
         self.assertEqual(expected, paths)
 
+    def test_teleport(self):
+        terrain = [
+            "GCCC",
+            "0CCC",
+            "CCCC",
+            "CCD0"
+        ]
+        g = TerrainGraph(terrain)
+        source = g.get_node(0, 0)
+        destinations = {g.get_node(2, 3)}
+        paths = shortest_path_all(source, destinations, g, False)
+
+        expected = {}
+        self.add_to_expected(expected, g, [(0, 0), (0, 1), (3, 3), (2, 3)], 3, True)
+
+        self.assertEqual(expected, paths)
+
     def test_unreachable(self):
         terrain = [
             "CN",

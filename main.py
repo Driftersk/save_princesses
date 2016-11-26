@@ -232,7 +232,6 @@ def shortest_path_all(source, end_nodes, graph, teleports_status=False):
         - distance: sum of distances in array_of_nodes
         - teleport_activated: true if Node.value == 'G' is in array_of_nodes, (teleports are activated now on)
     """
-    # todo: make this for all end_nodes
     # todo: use dynamic programming, look aside dict: {NodeA: {NodeB: 5}}, distance from A to B is 5
     # todo: | do not allow all 'caching', with 1000x1000 map = 1M nodes this yields to 1T integers
     def change_distance(priority_queue, node, d):
@@ -247,7 +246,7 @@ def shortest_path_all(source, end_nodes, graph, teleports_status=False):
                 break
         heapq.heapify(priority_queue)
 
-    teleport_trace = None
+    teleport_traces = {}            # used to save traces with teleport activated
 
     gpt = get_predecesors_trace     # just alias for that long function name
 
@@ -286,9 +285,12 @@ def shortest_path_all(source, end_nodes, graph, teleports_status=False):
 
         # if teleports are not activated yet then:
         # check if cun is 'G' and calculate shortest_path_any(cun, end_nodes, graph, True)
-        if not teleports_status and cun.value == 'G':
-            pass    # todo: implement teleports
+        if not teleports_status and cun.value == 'G':   # todo: test this code
+            teleport_traces = shortest_path_all(cun, end_nodes, graph, True)
+            for destination, data in teleport_traces.values():
+                teleport_traces[destination] = (gpt(predecessors, cun)[:-1] + data[0], distance + data[1], True)
 
+    # calculate foot traces
     foot_traces = {}
     for destination_node in end_nodes:
         trace = gpt(predecessors, destination_node)
@@ -297,7 +299,19 @@ def shortest_path_all(source, end_nodes, graph, teleports_status=False):
             tp_activated = reduce(lambda l, r: l or r.value == 'G', trace, False)   # activate teleport if its in trace
         foot_traces[destination_node] = (trace, get_trace_distance(graph, trace), tp_activated)
 
-    return foot_traces
+    # compare foot and teleport traces and return fastest
+    if not teleports_status or teleport_traces != {}:   # teleport doesnt exist or we had teleport from start
+        return foot_traces
+    else:
+        final_traces = {}
+        for destination in end_nodes:
+            via_teleport = teleport_traces.get(destination)
+            via_no_teleport = foot_traces.get(destination)
+            # todo: TypeError: 'NoneType' object is not subscriptable, when 'G' is present in map
+            final_traces[destination] = teleport_traces.get(destination) if via_teleport[1] < via_no_teleport[1] \
+                else foot_traces.get(destination)
+
+        return final_traces
 
 
 def get_predecesors_trace(dictonary, destination):
