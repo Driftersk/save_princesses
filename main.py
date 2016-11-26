@@ -1,7 +1,7 @@
 #! python3
 
 import sys
-import heapq as pq
+import heapq
 from functools import total_ordering, reduce
 
 import itertools
@@ -17,7 +17,7 @@ P: 1, princess
 G: 1, turns on ability to teleport
 
 Player starts at [0,0], needs to find dragon before t turns, and
-get to one of the princesses.
+get to all princesses in shortest time.
 """
 
 
@@ -122,7 +122,6 @@ class TerrainGraph:
         if teleports_activated and self.teleports.get(node):
             for teleport_exist in self.teleports.get(node):         # get all teleport exits
                 cost = self.TELEPORT_DISTANCE[node.value]
-                # todo: in this exercise unnecessary check
                 # check if teleport route is faster then by walking, (in case 0 its always faster)
                 if teleport_exist not in neighbours.keys() or cost < neighbours.get(teleport_exist):
                     neighbours[teleport_exist] = cost   # add possible teleport exit with set cost by distance
@@ -160,7 +159,6 @@ class TerrainGraph:
 
 
 def shortest_path_any(start, end_nodes, graph, teleports_activated=False):
-    # todo: this function consumes 99% CPU time, need to simplify graph
     def change_distance(q, u, d):
         """
         :param q: priority queue
@@ -171,7 +169,7 @@ def shortest_path_any(start, end_nodes, graph, teleports_activated=False):
             if node[1] == u:
                 q[i] = (d, node[1])
                 break
-        pq.heapify(q)
+        heapq.heapify(q)
 
     teleport_trace = None
 
@@ -184,12 +182,12 @@ def shortest_path_any(start, end_nodes, graph, teleports_activated=False):
 
     # priority queue
     calculated_distances = [(0, node) if node == start else (sys.maxsize, node) for node in graph.nodes.values()]
-    pq.heapify(calculated_distances)
+    heapq.heapify(calculated_distances)
 
     done = set()       # nodes which already have shortest path calculated
 
     while calculated_distances:
-        distance, cun = pq.heappop(calculated_distances)        # cun = closest unprocessed node
+        distance, cun = heapq.heappop(calculated_distances)        # cun = closest unprocessed node
         done.add(cun)
         neighbours = graph.get_neighbours(cun, teleports_activated)
         for neighbour in neighbours:
@@ -197,8 +195,7 @@ def shortest_path_any(start, end_nodes, graph, teleports_activated=False):
                 current_distance = shortest_distances.get(cun) + graph.get_distance_to_neighbour(cun, neighbour)
                 if current_distance < shortest_distances.get(neighbour):
                     # chance distance of neighbour to distance of cun + distance from cun to neighbour
-                    shortest_distances[neighbour] = shortest_distances.get(cun) + \
-                                                    graph.get_distance_to_neighbour(cun, neighbour)
+                    shortest_distances[neighbour] = current_distance
                     # set neighbour's parent
                     predecessors[neighbour] = cun
                     # chance distance in priority queue
@@ -222,19 +219,89 @@ def shortest_path_any(start, end_nodes, graph, teleports_activated=False):
         else (teleport_trace, True)
 
 
-def get_predecesors_trace(dictonary, node):
+def shortest_path_all(source, end_nodes, graph, teleports_status=False):
     """
-    Returns list containing trace from start to node
+    Calculates shortest paths for all specified end_nodes
+    :param source: source node, starting node
+    :param end_nodes: set of destinations
+    :param graph: graph with specified distances
+    :param teleports_status: true if teleports are already activated, false otherwise
+    :return: dictionary of {key: value}, exactly:
+        {destination: (array_of_nodes, distance, teleport_activated)}
+        - array_of_nodes: array of Nodes on shortest path
+        - distance: sum of distances in array_of_nodes
+        - teleport_activated: true if Node.value == 'G' is in array_of_nodes, (teleports are activated now on)
+    """
+    # todo: make this for all end_nodes
+    # todo: use dynamic programming, look aside dict: {NodeA: {NodeB: 5}}, distance from A to B is 5
+    # todo: | do not allow all 'caching', with 1000x1000 map = 1M nodes this yields to 1T integers
+    def change_distance(q, u, d):
+        """
+        :param q: priority queue
+        :param u: vertex
+        :param d: new distance
+        """
+        for i, node in enumerate(q):
+            if node[1] == u:
+                q[i] = (d, node[1])
+                break
+        heapq.heapify(q)
+
+    teleport_trace = None
+
+    gpt = get_predecesors_trace     # just alias for that long function name
+
+    # {Node(...): x, ...}       where x is distance from start node to Node
+    shortest_distances = {node: sys.maxsize for node in graph.nodes.values()}
+    shortest_distances[source] = 0       # where we start, its distance 0
+    predecessors = {}       # {Node1(...): Node2(...), ...}         where Node1 is child of Node2
+
+    # priority queue
+    pq = [(0, node) if node == source else (sys.maxsize, node) for node in graph.nodes.values()]
+    heapq.heapify(pq)
+
+    done = set()       # nodes which already have shortest path calculated
+
+    while pq:
+        distance, cun = heapq.heappop(pq)        # cun = closest unprocessed node
+        done.add(cun)
+        neighbours = graph.get_neighbours(cun, teleports_status)
+        for neighbour in neighbours:
+            if neighbour not in done:
+                current_distance = shortest_distances.get(cun) + graph.get_distance_to_neighbour(cun, neighbour)
+                if current_distance < shortest_distances.get(neighbour):
+                    # chance distance of neighbour to distance of cun + distance from cun to neighbour
+                    shortest_distances[neighbour] = current_distance
+                    # set neighbour's parent
+                    predecessors[neighbour] = cun
+                    # chance distance in priority queue
+                    change_distance(pq, neighbour, current_distance)
+
+        # if teleports are not activated yet then:
+        # check if cun is 'G' and calculate shortest_path_any(cun, end_nodes, graph, True)
+        if not teleports_status and cun.value == 'G':
+            teleport_trace, _ = shortest_path_any(cun, end_nodes, graph, True)
+            teleport_trace = gpt(predecessors, cun)[:-1] + teleport_trace
+
+    # todo: foot_trace = gpt(predecessors, end_node1), ...
+
+    pass
+    # return {endNode: ([source, node, node, node, endNode], 5, True)} for example
+
+
+def get_predecesors_trace(dictonary, destination):
+    """
+    Returns list containing trace from start to node, inside dictionary of predecesors
     :param dictonary: in shape {Node1(...): Node2(...)}     meaning Node1's parent is Node2
-    :param node:
-    :return:
+    :param destination: destination node which to calculate path
+    :return: array of nodes from source to destination
     """
-    if node not in dictonary.keys():
+    if destination not in dictonary.keys():
         return []
 
-    trace = [node]
+    trace = [destination]
 
-    current = node
+    current = destination
     while dictonary.get(current):
         current = dictonary.get(current)
         trace.append(current)
@@ -244,10 +311,10 @@ def get_predecesors_trace(dictonary, node):
 
 def get_trace_distance(graph, trace):
     """
-    Returns sum of distances on specified trace, [] returns sys.maxsize
-    :param graph:
-    :param trace:
-    :return:
+    Returns sum of distances on specified trace
+    :param graph: graph which to get distances
+    :param trace: array of nodes
+    :return: sum of distances of nodes inside trace, [] returns sys.maxsize
     """
     if not trace:
         return sys.maxsize
