@@ -235,17 +235,17 @@ def shortest_path_all(source, end_nodes, graph, teleports_status=False):
     # todo: make this for all end_nodes
     # todo: use dynamic programming, look aside dict: {NodeA: {NodeB: 5}}, distance from A to B is 5
     # todo: | do not allow all 'caching', with 1000x1000 map = 1M nodes this yields to 1T integers
-    def change_distance(q, u, d):
+    def change_distance(priority_queue, node, d):
         """
-        :param q: priority queue
-        :param u: vertex
+        :param priority_queue: priority queue
+        :param node: vertex
         :param d: new distance
         """
-        for i, node in enumerate(q):
-            if node[1] == u:
-                q[i] = (d, node[1])
+        for i, distance_node_tupple in enumerate(priority_queue):
+            if distance_node_tupple[1] == node:
+                priority_queue[i] = (d, distance_node_tupple[1])
                 break
-        heapq.heapify(q)
+        heapq.heapify(priority_queue)
 
     teleport_trace = None
 
@@ -261,10 +261,17 @@ def shortest_path_all(source, end_nodes, graph, teleports_status=False):
     heapq.heapify(pq)
 
     done = set()       # nodes which already have shortest path calculated
+    destinations_to_compute = len(end_nodes)
 
     while pq:
         distance, cun = heapq.heappop(pq)        # cun = closest unprocessed node
         done.add(cun)
+        if cun in end_nodes:
+            destinations_to_compute -= 1
+            # we got all destiantions computed, we can end algo
+            if destinations_to_compute == 0:
+                break
+
         neighbours = graph.get_neighbours(cun, teleports_status)
         for neighbour in neighbours:
             if neighbour not in done:
@@ -280,13 +287,17 @@ def shortest_path_all(source, end_nodes, graph, teleports_status=False):
         # if teleports are not activated yet then:
         # check if cun is 'G' and calculate shortest_path_any(cun, end_nodes, graph, True)
         if not teleports_status and cun.value == 'G':
-            teleport_trace, _ = shortest_path_any(cun, end_nodes, graph, True)
-            teleport_trace = gpt(predecessors, cun)[:-1] + teleport_trace
+            pass    # todo: implement teleports
 
-    # todo: foot_trace = gpt(predecessors, end_node1), ...
+    foot_traces = {}
+    for destination_node in end_nodes:
+        trace = gpt(predecessors, destination_node)
+        tp_activated = teleports_status
+        if not tp_activated:    # check if we activated teleports in trace
+            tp_activated = reduce(lambda l, r: l or r.value == 'G', trace, False)   # activate teleport if its in trace
+        foot_traces[destination_node] = (trace, get_trace_distance(graph, trace), tp_activated)
 
-    pass
-    # return {endNode: ([source, node, node, node, endNode], 5, True)} for example
+    return foot_traces
 
 
 def get_predecesors_trace(dictonary, destination):
@@ -294,7 +305,7 @@ def get_predecesors_trace(dictonary, destination):
     Returns list containing trace from start to node, inside dictionary of predecesors
     :param dictonary: in shape {Node1(...): Node2(...)}     meaning Node1's parent is Node2
     :param destination: destination node which to calculate path
-    :return: array of nodes from source to destination
+    :return: array of nodes from source to destination, [] if destination is not present in dictionary
     """
     if destination not in dictonary.keys():
         return []
